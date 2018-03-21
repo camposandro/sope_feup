@@ -1,0 +1,14 @@
+# Compiled Object files
+*.o
+
+# Executables
+*.out
+*.exe
+
+# Files
+*.txt
+
+# Eclipse project related files
+*.cproject
+*.project
+.settings/*
