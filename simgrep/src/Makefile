@@ -20,4 +20,3 @@ sighandlers.o: sighandlers.c
 
 clean:
 	rm -rf *.o simgrep
-

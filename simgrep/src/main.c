@@ -18,15 +18,22 @@ int main(int argc, char** argv) {
 	}
 
 	/* create/re-open log file */
-	open_logFile();
+	create_logFile();
 
 	/* block SIGINT */
 	block_sigint();
 
-	while(1) {
-		write_logFile();
-		sleep(2);
+	/* start process forking here */
+
+	/* search for pattern */
+	if (argc == 2) {
+		search_pattern(argv[1], "test");
+	} else {
+		search_pattern(argv[2], "test");
 	}
+
+	/* closes log file */
+	close_logFile();
 
 	return 0;
 }
