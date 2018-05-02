@@ -1,54 +1,30 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/types.h>
-
-// Macros definition
-#define INVNUMARGS 1
-
-#define MAX_ROOM_SEATS 9999
-#define MAX_CLI_SEATS 99
-#define WIDTH_PID 5
-#define WIDTH_XXNN 5
-#define WIDTH_SEAT 4
-
-#define MAX -1 // wanted_seats > MAX_CLI_SEATS
-#define NST -2 // invalid num of seat_ids
-#define IID -3 // invalid seat_ids
-#define ERR -4 // another parameter errors
-#define NAV -5 // at least 1 seat not available
-#define FUL -6 // full room
-
-#define DELAY(time) sleep(time)
-
-typedef struct Seat
-{
-    int available;
-    int *client_id;
-    pid_t *ticket_office_id;
-} Seat;
-
-typedef struct Room
-{
-    int num_room_seats;
-    int num_ticket_offices;
-    int open_time;
-    Seat *seats;
-} Room;
-
-// function prototypes
-Room *process_args(int argc, char **argv);
-void room_init(Room *room);
-int isSeatFree(Seat *seats, int seat_num);
-void bookSeat(Seat *seats, int seat_num, int client_id);
-void freeSeat(Seat *seats, int seat_num, int client_id);
+#include "utils.h"
 
 int main(int argc, char **argv)
 {
-    Room *room = process_args(argc, argv);
+    Server *sv = (Server *)malloc(sizeof(Server));
+    sv->room = process_args(argc, argv);
 
-    printf("num_room_seats: %d\nnum_ticket_offices: %d\nopen_time: %d\n",
-           room->num_room_seats, room->num_ticket_offices, room->open_time);
+    printSvInfo(sv);
+
+    // creating & opening fifo "requests"
+    sv->fifo_requests = create_fifo();
+
+    // creating & opening slog.txt
+    sv->slog_file = open_file(SLOG_FILE);
+
+    // creating num_ticket_office threads
+    pthread_t *tids = create_threads(sv->room);
+
+    // TODO: implement alarm for open_time
+
+    // closeing and destroying fifo "requests"
+    close_fifo(sv->fifo_requests);
+
+    // TODO: wait for threads to end
+    join_threads();
+
+    // TODO: register info - write on slog.txt
 
     return 0;
 }
@@ -60,7 +36,7 @@ Room *process_args(int argc, char **argv)
         printf("Usage: $ server <num_room_seats>"
                " <num_ticket_offices> <open_time>\n");
 
-        exit(INVNUMARGS);
+        exit(1);
     }
 
     Room *room = (Room *)malloc(sizeof(Room));
@@ -68,7 +44,6 @@ Room *process_args(int argc, char **argv)
     room->num_room_seats = atoi(argv[1]);
     room->num_ticket_offices = atoi(argv[2]);
     room->open_time = atoi(argv[3]);
-
     room_init(room);
 
     return room;
@@ -76,32 +51,119 @@ Room *process_args(int argc, char **argv)
 
 void room_init(Room *room)
 {
-    room->seats = (Seat *)malloc(room->num_room_seats);
+    room->seats = (Seat **)malloc(room->num_room_seats * sizeof(Seat *));
     for (size_t i = 0; i < room->num_room_seats; i++)
-        room->seats[i].available = 1;
+        room->seats[i] = NULL;
 }
 
-int isSeatFree(Seat *seats, int seat_num)
+int isSeatFree(Seat **seats, int seat_num)
 {
-    return seats[seat_num].available;
+    int isFree = 0;
+    // -- secção crítica!
+    if (seats[seat_num] == NULL)
+    {
+        isFree = 1;
+        DELAY();
+    }
+    return isFree;
 }
 
-void bookSeat(Seat *seats, int seat_num, int client_id)
+void bookSeat(Seat **seats, int seat_num, int client_id)
 {
-    seats[seat_num].client_id = (int *)malloc(sizeof(int));
-    seats[seat_num].ticket_office_id = (pid_t *)malloc(sizeof(pid_t));
+    // -- secção crítica!
+    seats[seat_num] = (Seat *)malloc(sizeof(Seat));
+    seats[seat_num]->client_id = client_id;
+    seats[seat_num]->ticket_office_id = pthread_self();
 
-    seats[seat_num].available = 0;
-    *(seats[seat_num].client_id) = client_id;
-    *(seats[seat_num].ticket_office_id) = getpid();
+    DELAY();
 }
 
-void freeSeat(Seat *seats, int seat_num, int client_id)
+void freeSeat(Seat **seats, int seat_num)
 {
-    seats[seat_num].client_id = (int *)malloc(sizeof(int));
-    seats[seat_num].ticket_office_id = (pid_t *)malloc(sizeof(pid_t));
+    // -- secção crítica!
+    free(seats[seat_num]);
 
-    seats[seat_num].available = 1;
-    *(seats[seat_num].client_id) = client_id;
-    *(seats[seat_num].ticket_office_id) = getpid();
+    DELAY();
+}
+
+int create_fifo()
+{
+    if (mkfifo(FIFONAME, S_IRUSR | S_IWUSR) < 0)
+    {
+        if (errno == EEXIST)
+            printf("FIFO %s already exists!\n", FIFONAME);
+        else
+            perror(FIFONAME);
+
+        exit(1);
+    }
+
+    int fd = open(FIFONAME, O_RDONLY | O_NONBLOCK);
+    if (fd == -1)
+    {
+        perror(FIFONAME);
+        exit(1);
+    }
+
+    return fd;
+}
+
+void close_fifo(int fd)
+{
+    close(fd);
+
+    if (unlink(FIFONAME) < 0)
+    {
+        printf("Error while destroying FIFO %s!\n", FIFONAME);
+        exit(1);
+    }
+}
+
+pthread_t *create_threads(Room *room)
+{
+    int num_threads = room->num_ticket_offices;
+    pthread_t *tids = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
+
+    for (size_t i = 0; i < num_threads; i++)
+    {
+        int rc = pthread_create(&tids[i], NULL, thread_func, room);
+        if (rc)
+        {
+            printf("Could not create thread - error code %d\n", rc);
+            exit(1);
+        }
+    }
+
+    return tids;
+}
+
+void *thread_func(void *arg)
+{
+}
+
+void join_threads()
+{
+}
+
+FILE *open_file(char *filename)
+{
+    FILE *file = fopen(filename, "a");
+
+    if (file != NULL)
+        return file;
+    else
+    {
+        perror(filename);
+        exit(1);
+    }
+}
+
+void printSvInfo(Server *sv)
+{
+    printf("num_room_seats: %d\n"
+           "num_ticket_offices: %d\n"
+           "open_time: %d\n",
+           sv->room->num_room_seats,
+           sv->room->num_ticket_offices,
+           sv->room->open_time);
 }
