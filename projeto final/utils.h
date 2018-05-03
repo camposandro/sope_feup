@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -22,11 +23,18 @@
 #define NAV -5  // at least 1 seat not available
 #define FUL -6  // full room
 
-#define FIFONAME    "requests"
+#define FIFONAME    "/tmp/requests"
 #define SLOG_FILE   "slog.txt"
 #define SBOOK_FILE  "sbook.txt"   
 
 #define DELAY() sleep(1)
+
+typedef struct Request
+{
+    int client_id;
+    int num_wanted_seats;
+    int *wanted_seats;
+} Request;
 
 typedef struct Seat
 {
@@ -37,22 +45,23 @@ typedef struct Seat
 typedef struct Room
 {
     int num_room_seats;
-    int num_ticket_offices;
-    int open_time;
     Seat **seats;
 } Room;
 
 typedef struct Server
 {
     Room *room;
+    int num_ticket_offices;
+    int open_time;
     int fifo_requests;
     FILE* slog_file;
     FILE* sbook_file;
 } Server;
 
-Room *process_args(int argc, char **argv);
+Server *create_server(int argc, char **argv);
+void print_sv_info(Server *sv);
 
-void room_init(Room *room);
+Room *room_init(int num_room_seats);
 int isSeatFree(Seat **seats, int seat_num);
 void bookSeat(Seat **seats, int seat_num, int client_id);
 void freeSeat(Seat **seats, int seat_num);
@@ -60,9 +69,10 @@ void freeSeat(Seat **seats, int seat_num);
 int create_fifo();
 void close_fifo();
 
-pthread_t *create_threads(Room *room);
-void *thread_func(void *arg);
+pthread_t *create_threads(Server *sv);
+void install_alarm(int open_time);
+void *read_request(void *arg);
 void join_threads();
 
-void printSvInfo(Server *sv);
-FILE* open_file(char* filename);
+FILE* open_file(char *filename);
+void close_files(Server *sv);
