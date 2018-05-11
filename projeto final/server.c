@@ -1,42 +1,44 @@
-#include "utils.h"
-
-int alarm_received = 0;
+#include "server.h"
 
 int main(int argc, char **argv)
 {
     // creating server
-    Server *sv = create_server(argc, argv);
+    Server *sv = createServer(argc, argv);
 
     // creating & opening slog.txt
-    sv->slog_file = open_file(SLOG_FILE);
+    slogFile = openFile(SLOG_FILE);
 
     // creating & opening fifo "requests"
-    sv->fifo_requests = create_fifo();
+    createFifo(FIFO_REQ, S_IRUSR | S_IWUSR);
+    sv->fdFifoReq = openFifo(FIFO_REQ, O_RDONLY | O_NONBLOCK);
 
     // creating num_ticket_office threads
-    pthread_t *tids = create_threads(sv);
+    createThreads(sv);
 
     // implementing alarm for open_time
-    install_alarm(sv->open_time);
+    installAlarm(serverAlarmHandler, sv->openTime);
+
+    // signal threads to be cancelled
+    terminateThreads(sv);
 
     // closing and destroying fifo "requests"
-    close_fifo(sv->fifo_requests);
-
-    // TODO: wait for threads to end
-    join_threads();
-
-    // TODO: register info - write on slog.txt
+    closeFifo(FIFO_REQ, sv->fdFifoReq);
 
     // TODO: register info - write on sbook.txt
-    sv->sbook_file = open_file(SBOOK_FILE);
+    sbookFile = openFile(SBOOK_FILE);
+
+    // closing server
+    char closeMsg[13] = "SERVER CLOSED";
+    writeFile(closeMsg, slogFile);
 
     // closing files
-    close_files(sv);
+    closeFile(SBOOK_FILE, sbookFile);
+    closeFile(SLOG_FILE, slogFile);
 
     return 0;
 }
 
-Server *create_server(int argc, char **argv)
+Server *createServer(int argc, char **argv)
 {
     if (argc != 4)
     {
@@ -47,205 +49,234 @@ Server *create_server(int argc, char **argv)
     }
 
     Server *sv = (Server *)malloc(sizeof(Server));
-    sv->num_ticket_offices = atoi(argv[2]);
-    sv->open_time = atoi(argv[3]);
-    sv->room = room_init(atoi(argv[1]));
+    sv->numTicketOffices = atoi(argv[2]);
+    sv->openTime = atoi(argv[3]);
+    sv->room = roomInit(atoi(argv[1]));
 
-    print_sv_info(sv);
+    printSvInfo(sv);
     return sv;
 }
 
-void print_sv_info(Server *sv)
+void printSvInfo(Server *sv)
 {
-    printf("num_room_seats: %d\n"
-           "num_ticket_offices: %d\n"
-           "open_time: %d\n",
-           sv->room->num_room_seats,
-           sv->num_ticket_offices,
-           sv->open_time);
+    printf("numRoomSeats: %d\n"
+           "numTicketOffices: %d\n"
+           "openTime: %d\n",
+           sv->room->numRoomSeats,
+           sv->numTicketOffices,
+           sv->openTime);
 }
 
-Room *room_init(int num_room_seats)
+Room *roomInit(int numRoomSeats)
 {
     Room *room = (Room *)malloc(sizeof(Room));
-    room->num_room_seats = num_room_seats;
+    room->numRoomSeats = numRoomSeats;
 
-    room->seats = (Seat **)malloc(room->num_room_seats * sizeof(Seat *));
-    for (size_t i = 0; i < room->num_room_seats; i++)
+    room->seats = (Seat **)malloc(room->numRoomSeats * sizeof(Seat *));
+    for (size_t i = 0; i < room->numRoomSeats; i++)
         room->seats[i] = NULL;
 
     return room;
 }
 
-int is_room_full(Room *room)
+int isRoomFull(Room *room)
 {
-    for (size_t i = 0; i < room->num_room_seats; i++)
+    int full = 1;
+
+    pthread_mutex_lock(&writeMutex);
+
+    for (size_t i = 0; i < room->numRoomSeats; i++)
         if (room->seats[i] == NULL)
-            return 0;
-}
-
-int isSeatFree(Seat **seats, int seat_num)
-{
-    int isFree = 0;
-    // -- secção crítica!
-    if (seats[seat_num] == NULL)
-    {
-        isFree = 1;
-        DELAY();
-    }
-    return isFree;
-}
-
-void bookSeat(Seat **seats, int seat_num, int client_id)
-{
-    // -- secção crítica!
-    seats[seat_num] = (Seat *)malloc(sizeof(Seat));
-    seats[seat_num]->client_id = client_id;
-    seats[seat_num]->ticket_office_id = pthread_self();
-
-    DELAY();
-}
-
-void freeSeat(Seat **seats, int seat_num)
-{
-    // -- secção crítica!
-    free(seats[seat_num]);
-
-    DELAY();
-}
-
-int create_fifo()
-{
-    while (mkfifo(FIFONAME, S_IRUSR | S_IWUSR) < 0)
-    {
-        if (errno == EEXIST)
-            unlink(FIFONAME);
-        else
         {
-            perror(FIFONAME);
-            exit(1);
+            full = 0;
+            break;
         }
-    }
 
-    int fd = open(FIFONAME, O_RDONLY | O_NONBLOCK);
-    if (fd == -1)
-    {
-        perror(FIFONAME);
-        exit(1);
-    }
+    DELAY();
 
-    return fd;
+    pthread_mutex_unlock(&writeMutex);
+
+    return full;
 }
 
-void close_fifo(int fd)
+int isSeatFree(Seat **seats, int seatNum)
 {
-    close(fd);
+    int free = 0;
 
-    if (unlink(FIFONAME) < 0)
-    {
-        printf("Error while destroying FIFO %s!\n", FIFONAME);
-        exit(1);
-    }
+    pthread_mutex_lock(&writeMutex);
+
+    if (seats[seatNum] == NULL)
+        free = 1;
+
+    DELAY();
+
+    pthread_mutex_unlock(&writeMutex);
+
+    return free;
 }
 
-pthread_t *create_threads(Server *sv)
+void bookSeat(Seat **seats, int seatNum, int clientId)
 {
-    int num_threads = sv->num_ticket_offices;
-    pthread_t *tids = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
+    pthread_mutex_lock(&writeMutex);
+    pthread_mutex_lock(&readMutex);
 
-    for (size_t i = 0; i < num_threads; i++)
+    seats[seatNum] = (Seat *)malloc(sizeof(Seat));
+    seats[seatNum]->clientId = clientId;
+    seats[seatNum]->ticketOfficeId = pthread_self();
+
+    DELAY();
+
+    pthread_mutex_unlock(&readMutex);
+    pthread_mutex_unlock(&writeMutex);
+}
+
+void freeSeat(Seat **seats, int seatNum)
+{
+    pthread_mutex_lock(&writeMutex);
+    pthread_mutex_lock(&readMutex);
+
+    free(seats[seatNum]);
+
+    DELAY();
+
+    pthread_mutex_unlock(&readMutex);
+    pthread_mutex_unlock(&writeMutex);
+}
+
+void createThreads(Server *sv)
+{
+    int numThreads = sv->numTicketOffices;
+    sv->tids = (pthread_t *)malloc(numThreads * sizeof(pthread_t));
+
+    for (size_t i = 0; i < numThreads; i++)
     {
-        int rc = pthread_create(&tids[i], NULL, read_request, (void *)sv);
+        int rc = pthread_create(&sv->tids[i], NULL, readRequest, (void *)sv);
         if (rc)
         {
             printf("Could not create thread - error code %d\n", rc);
             exit(1);
         }
-    }
 
-    return tids;
+        char openMsg[10];
+        sprintf(openMsg, "%02lu-OPEN\n", i);
+        writeFile(openMsg, slogFile);
+    }
 }
 
-void *read_request(void *arg)
+void *readRequest(void *arg)
 {
-    int ans; // answer for client
     Server *sv = (Server *)arg;
-    Request *req = (Request *)malloc(sizeof(Request));
+    Room *room = sv->room;
 
-    while (read(sv->fifo_requests, req, sizeof(Request)) < 0)
+    Request *req = (Request *) malloc(sizeof(Request));
+
+    while (!endThread)
     {
-        if (req->num_wanted_seats < 1 ||
-            req->num_wanted_seats > MAX_CLI_SEATS)
-            ans = MAX;
+        pthread_mutex_lock(&writeMutex);
+        int fifoRead = read(sv->fdFifoReq, req, sizeof(Request));
+        pthread_mutex_unlock(&writeMutex);
 
-        int num_preferred_seats = sizeof(*req->wanted_seats) / sizeof(int);
-        if (num_preferred_seats < req->num_wanted_seats ||
-            num_preferred_seats > MAX_CLI_SEATS)
-            ans = NST;
+        if (fifoRead > 0)
+        {
+            printf("Request read!\n");
+            int validReq = (verifyRequest(sv, req) == 1);
 
-        if (is_room_full(sv->room))
-            ans = FUL;
+            if (validReq)
+            {
+                printf("Valid request!\n");
+                // TODO: reserve seats
+                Answer *ans = handleReservation(sv, req);
+                sendAnswer(req, ans);
+            }
+            else
+            { 
+                printf("Not a valid request!\n");
+                // TODO: need to parse answer to string !
+            }
 
-        int num_available_seats = 0;
-        for (size_t i = 0; i < num_preferred_seats; i++)
-            if (isSeatFree(sv->room->seats, req->wanted_seats[i]))
-                num_available_seats++;
-        if (num_available_seats < req->num_wanted_seats)
-            ans = NAV;
-
-        // TODO: valid request - process it
-
-        // TODO: send info to client through fifo
+            // TODO: register info - write on slog.txt
+        }
 
         DELAY();
     }
 }
 
-void join_threads()
+int verifyRequest(Server *sv, Request *req)
 {
+    if (isRoomFull(sv->room)) 
+        return FUL;
+
+    if (req->numWantedSeats < 1 ||
+        req->numWantedSeats > MAX_CLI_SEATS)
+        return MAX;
+
+    if (req->numPrefSeats < req->numWantedSeats ||
+        req->numPrefSeats > MAX_CLI_SEATS)
+        return NST;
+
+    int numAvailableSeats = 0;
+    for (size_t i = 0; i < req->numPrefSeats; i++) {
+        if (isSeatFree(sv->room->seats, req->wantedSeats[i]))
+            numAvailableSeats++;
+    }
+    if (numAvailableSeats < req->numWantedSeats)
+        return NAV;
+
+    return 1;
 }
 
-FILE *open_file(char *filename)
+Answer *handleReservation(Server *sv, Request *req)
 {
-    FILE *file = fopen(filename, "a");
+    Seat **seats = sv->room->seats;
 
-    if (file != NULL)
-        return file;
-    else
+    Answer *ans = (Answer *)malloc(sizeof(Answer));
+    ans->numReservedSeats = 0;
+
+    for (int i = 0; i < req->numPrefSeats; i++)
     {
-        perror(filename);
-        exit(1);
+        if (isSeatFree(seats, req->wantedSeats[i]))
+        {
+            bookSeat(seats, req->wantedSeats[i], req->clientId);
+            ans->reservedSeats[ans->numReservedSeats] = req->wantedSeats[i];
+            ans->numReservedSeats++;
+        }
+    }
+
+    return ans;
+}
+
+void sendAnswer(Request *req, Answer *ans)
+{
+    char clientStr[12];
+    sprintf(clientStr, "%d", req->clientId);
+
+    char *fifoAns = "/tmp/ans";
+    strcat(fifoAns, clientStr);
+    printf("fifoAns: %s\n", fifoAns);
+
+    int clientFifo = openFifo(fifoAns, O_WRONLY);
+    if (write(clientFifo, ans, sizeof(Answer)) < 0)
+        printf("Answer could not be sent!\n");
+}
+
+void terminateThreads(Server *sv)
+{
+    pthread_mutex_lock(&readMutex);
+    endThread = 1;
+    pthread_mutex_unlock(&readMutex);
+
+    int numThreads = sv->numTicketOffices;
+    for (size_t i = 0; i < numThreads; i++)
+    {
+        pthread_join(sv->tids[i], NULL);
+
+        char closeMsg[10];
+        sprintf(closeMsg, "%02lu-CLOSED\n", i);
+        writeFile(closeMsg, slogFile);
     }
 }
 
-void close_files(Server *sv)
-{
-    if (fclose(sv->sbook_file) != 0)
-        perror(SBOOK_FILE);
-
-    if (fclose(sv->slog_file) != 0)
-        perror(SLOG_FILE);
-}
-
-void alarm_handler(int signum)
+void serverAlarmHandler(int signum)
 {
     printf("Server closing ...\n");
-}
-
-void install_alarm(int open_time)
-{
-    struct sigaction action;
-    sigset_t sigmask;
-
-    action.sa_handler = alarm_handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    sigaction(SIGALRM, &action, NULL);
-
-    sigfillset(&sigmask);
-    sigdelset(&sigmask, SIGALRM);
-
-    alarm(open_time);
-
-    sigsuspend(&sigmask);
 }
