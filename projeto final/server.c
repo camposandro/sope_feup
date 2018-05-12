@@ -59,9 +59,9 @@ Server *createServer(int argc, char **argv)
 
 void printSvInfo(Server *sv)
 {
-    printf("numRoomSeats: %d\n"
-           "numTicketOffices: %d\n"
-           "openTime: %d\n",
+    printf("num_room_seats: %d\n"
+           "num_ticket_offices: %d\n"
+           "open_time: %d\n",
            sv->room->numRoomSeats,
            sv->numTicketOffices,
            sv->openTime);
@@ -158,7 +158,7 @@ void createThreads(Server *sv)
         }
 
         char openMsg[10];
-        sprintf(openMsg, "%02lu-OPEN\n", i);
+        sprintf(openMsg, "%02lu-OPEN\n", i + 1);
         writeFile(openMsg, slogFile);
     }
 }
@@ -184,7 +184,6 @@ void *readRequest(void *arg)
             if (validReq)
             {
                 printf("Valid request!\n");
-                // TODO: reserve seats
                 Answer *ans = handleReservation(sv, req);
                 sendAnswer(req, ans);
             }
@@ -228,18 +227,18 @@ int verifyRequest(Server *sv, Request *req)
 Answer *handleReservation(Server *sv, Request *req)
 {
     Seat **seats = sv->room->seats;
-
     Answer *ans = (Answer *)malloc(sizeof(Answer));
-    ans->numReservedSeats = 0;
 
-    for (int i = 0; i < req->numPrefSeats; i++)
+    int index = 0;
+    ans->numReservedSeats = 0;
+    while (ans->numReservedSeats < req->numWantedSeats)
     {
-        if (isSeatFree(seats, req->wantedSeats[i]))
-        {
-            bookSeat(seats, req->wantedSeats[i], req->clientId);
-            ans->reservedSeats[ans->numReservedSeats] = req->wantedSeats[i];
+        if (isSeatFree(seats, req->wantedSeats[index])) {
+            bookSeat(seats, req->wantedSeats[index], req->clientId);
+            ans->reservedSeats[ans->numReservedSeats] = req->wantedSeats[index];
             ans->numReservedSeats++;
         }
+        index++;
     }
 
     return ans;
@@ -250,7 +249,7 @@ void sendAnswer(Request *req, Answer *ans)
     char clientStr[12];
     sprintf(clientStr, "%d", req->clientId);
 
-    char *fifoAns = "/tmp/ans";
+    char fifoAns[20] = "/tmp/ans";
     strcat(fifoAns, clientStr);
     printf("fifoAns: %s\n", fifoAns);
 
@@ -271,7 +270,7 @@ void terminateThreads(Server *sv)
         pthread_join(sv->tids[i], NULL);
 
         char closeMsg[10];
-        sprintf(closeMsg, "%02lu-CLOSED\n", i);
+        sprintf(closeMsg, "%02lu-CLOSED\n", i + 1);
         writeFile(closeMsg, slogFile);
     }
 }

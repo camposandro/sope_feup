@@ -26,6 +26,8 @@ int main(int argc, char **argv)
     closeFifo(client->fifoAns, client->fdFifoAns);
 
     // creating & opening clog.txt & cbook.txt
+    clogFile = openFile(CLOG_FILE);
+    cbookFile = openFile(CBOOK_FILE);
 
     // writing to files
 
@@ -111,9 +113,10 @@ void waitAnswer(Client *client)
         int fifoRead = read(client->fdFifoAns, ans, sizeof(Answer));
         pthread_mutex_unlock(&readMutex);
 
-        if (fifoRead > 0)
+        if (fifoRead > 0) {
             printf("Answer received\n");
-        else break;
+            break;
+        }
 
         DELAY();
     }
