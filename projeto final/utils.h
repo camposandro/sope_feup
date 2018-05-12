@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <sys/mman.h>
+#include <stdarg.h>
 
 #define MAX_ROOM_SEATS  9999
 #define MAX_CLI_SEATS   99
@@ -30,10 +31,11 @@
 #define CLOG_FILE       "clog.txt"
 #define CBOOK_FILE      "cbook.txt"
 
-#define DELAY() sleep(1)
+#define DELAY() usleep(1000)
 
 typedef struct Answer
 {
+    int errorCode;
     int numReservedSeats;
     int reservedSeats[MAX_CLI_SEATS];
 } Answer;
@@ -76,6 +78,14 @@ typedef struct Server
     int fdFifoReq;
 } Server;
 
+typedef struct ThreadArgs
+{
+    Server *sv;
+    pthread_t tid;
+    Request *req;
+    Answer *ans;
+} ThreadArgs;
+
 // Utility functions
 void createFifo(char *fifoname, mode_t perm);
 int openFifo(char *fifoname, mode_t mode);
@@ -84,3 +94,4 @@ FILE *openFile(char *filename);
 void writeFile(char *txt, FILE *file);
 void closeFile(char *filename, FILE *file);
 void installAlarm(void (*handler)(int), int time);
+const char *getError(int error);

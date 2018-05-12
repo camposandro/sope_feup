@@ -2,8 +2,6 @@
 
 int main(int argc, char **argv)
 {
-    printf("** Running process %d (PGID %d) **\n", getpid(), getpgrp());
-
     // creating client
     Client *client = createClient(argc, argv);
 
@@ -16,24 +14,16 @@ int main(int argc, char **argv)
     // sending request
     sendRequest(client);
 
-    // installing alarm for timeout
-    // install_alarm(client_alarm_handler, client->timeout);
-
     // waiting for server's answer
     waitAnswer(client);
-
-    // closing answer's fifo
-    closeFifo(client->fifoAns, client->fdFifoAns);
 
     // creating & opening clog.txt & cbook.txt
     clogFile = openFile(CLOG_FILE);
     cbookFile = openFile(CBOOK_FILE);
 
-    // writing to files
+    // TODO: writing to files
 
-    // closing files
-    closeFile(CLOG_FILE, clogFile);
-    closeFile(CBOOK_FILE, cbookFile);
+    freeResources(client);
 
     return 0;
 }
@@ -44,7 +34,6 @@ Client *createClient(int argc, char **argv)
     {
         printf("Usage: $ client <time_out>"
                " <num_wanted_seats> <pref_seat_list>\n");
-
         exit(1);
     }
 
@@ -99,22 +88,36 @@ void sendRequest(Client *client)
         printf("Error while writing request to FIFO ...\n");
         exit(1);
     }
-    else
+    else {
         printf("Request sent!\n");
+    }
 }
 
 void waitAnswer(Client *client)
 {
+    double timeDiff = 0;
+    time_t start, stop;
+
     Answer *ans = (Answer *)malloc(sizeof(Answer));
 
+    time(&start);
     while (1)
     {
+        time(&stop);
+        timeDiff = difftime(stop, start);
+        if (timeDiff >= client->timeout)
+        {
+            printf("Client timed out!\n");
+            break;
+        }
+
         pthread_mutex_lock(&readMutex);
         int fifoRead = read(client->fdFifoAns, ans, sizeof(Answer));
         pthread_mutex_unlock(&readMutex);
 
-        if (fifoRead > 0) {
-            printf("Answer received\n");
+        if (fifoRead > 0)
+        {
+            printf("Answer received!\n");
             break;
         }
 
@@ -122,7 +125,9 @@ void waitAnswer(Client *client)
     }
 }
 
-void clientAlarmHandler(int signum)
+void freeResources(Client *client)
 {
-    printf("Client timeout ...\n");
+    closeFifo(client->fifoAns, client->fdFifoAns);
+    closeFile(CLOG_FILE, clogFile);
+    closeFile(CBOOK_FILE, cbookFile);
 }

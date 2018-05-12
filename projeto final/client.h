@@ -12,3 +12,4 @@ int createAnsFifo();
 void sendRequest(Client *client);
 void waitAnswer(Client *client);
 void clientAlarmHandler(int signum);
+void freeResources(Client *client);

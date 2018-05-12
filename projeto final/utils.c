@@ -79,3 +79,33 @@ void installAlarm(void (*handler)(int), int time)
 
     sigsuspend(&sigmask);
 }
+
+const char *getError(int error)
+{
+    char *err = (char *) malloc(3 * sizeof(char));
+    switch (error)
+    {
+    case -1:
+        strcpy(err, "MAX");
+        break;
+    case -2:
+        strcpy(err, "NST");
+        break;
+    case -3:
+        strcpy(err, "IID");
+        break;
+    case -4:
+        strcpy(err, "ERR");
+        break;
+    case -5:
+        strcpy(err, "NAV");
+        break;
+    case -6:
+        strcpy(err, "FUL");
+        break;
+    default:
+        return NULL;
+    }
+
+    return err;
+}
