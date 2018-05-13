@@ -24,6 +24,7 @@
 #define ERR -4          // another parameter errors
 #define NAV -5          // at least 1 seat not available
 #define FUL -6          // full room
+#define TMO -7          // timeout
 
 #define FIFO_REQ        "/tmp/requests"
 #define SLOG_FILE       "slog.txt"
@@ -63,6 +64,7 @@ typedef struct Room
 typedef struct Client
 {
     Request *req;
+    Answer *ans;
     char *fifoAns;
     int fdFifoAns;
     int fdFifoReq;

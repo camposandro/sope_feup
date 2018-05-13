@@ -11,4 +11,6 @@ Client *createClient(int argc, char **argv);
 int createAnsFifo();
 void sendRequest(Client *client);
 void waitAnswer(Client *client);
+void writeClog(Client *client);
+void writeCbook(Client *client);
 void freeResources(Client *client);

@@ -5,6 +5,9 @@ int main(int argc, char **argv)
     // creating client
     Client *client = createClient(argc, argv);
 
+    // creating & opening clog.txt
+    clogFile = openFile(CLOG_FILE);
+
     // creating & opening answer fifo
     client->fdFifoAns = createAnsFifo(client);
 
@@ -17,12 +20,13 @@ int main(int argc, char **argv)
     // waiting for server's answer
     waitAnswer(client);
 
-    // creating & opening clog.txt & cbook.txt
-    clogFile = openFile(CLOG_FILE);
+    // creating & opening cbook.txt
     cbookFile = openFile(CBOOK_FILE);
 
-    // TODO: writing to files
+    // writing to cbook.txt
+    writeCbook(client);
 
+    // freeing resources
     freeResources(client);
 
     return 0;
@@ -49,9 +53,10 @@ Client *createClient(int argc, char **argv)
     req->numPrefSeats = parseString(argv[3], req->wantedSeats);
 
     Client *client = (Client *)malloc(sizeof(Client));
-    client->timeout = atoi(argv[1]);
     client->req = req;
+    client->ans = NULL;
     client->fifoAns = NULL;
+    client->timeout = atoi(argv[1]);
 
     return client;
 }
@@ -98,7 +103,7 @@ void waitAnswer(Client *client)
     double timeDiff = 0;
     time_t start, stop;
 
-    Answer *ans = (Answer *)malloc(sizeof(Answer));
+    client->ans = (Answer *)malloc(sizeof(Answer));
 
     time(&start);
     while (1)
@@ -107,21 +112,67 @@ void waitAnswer(Client *client)
         timeDiff = difftime(stop, start);
         if (timeDiff >= client->timeout)
         {
+            client->ans->errorCode = TMO;
             printf("Client timed out!\n");
             break;
         }
 
         pthread_mutex_lock(&readMutex);
-        int fifoRead = read(client->fdFifoAns, ans, sizeof(Answer));
+        int fifoRead = read(client->fdFifoAns, client->ans, sizeof(Answer));
         pthread_mutex_unlock(&readMutex);
 
         if (fifoRead > 0)
         {
             printf("Answer received!\n");
+            writeClog(client);
             break;
         }
 
         DELAY();
+    }
+}
+
+void writeClog(Client *client)
+{
+    Answer *ans = client->ans;
+    char line[50];
+
+    sprintf(line, "%05d ", client->req->clientId);
+
+    if (ans->errorCode != 0)
+    {
+        char *err = malloc(3 * sizeof(char));
+        strcpy(err, getError(ans->errorCode));
+        printf("err: %s\n", err);
+        sprintf(line + strlen(line), "%s", err);
+    }
+    else
+    {
+        for (int i = 1; i <= ans->numReservedSeats; i++)
+        {
+            if (ans->errorCode == 0)
+            {
+                sprintf(line + strlen(line), "%02d", i);
+                sprintf(line + strlen(line), ".");
+                sprintf(line + strlen(line), "%02d ", ans->numReservedSeats);
+                sprintf(line + strlen(line), "%04d\n", ans->reservedSeats[i - 1]);
+            }
+        }
+    }
+
+    writeFile(line, clogFile);
+}
+
+void writeCbook(Client *client)
+{
+
+    Answer *ans = client->ans;
+
+    for (int i = 1; i <= ans->numReservedSeats; i++)
+    {
+        char seat[4];
+        sprintf(seat, "%04d\n", ans->reservedSeats[i - 1]);
+        writeFile(seat, cbookFile);
     }
 }
 

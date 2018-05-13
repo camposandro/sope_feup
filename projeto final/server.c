@@ -286,11 +286,13 @@ void writeSlog(ThreadArgs *args)
     Request *req = args->req;
     Answer *ans = args->ans;
 
-    char line[50];
+    char line[100];
     sprintf(line, "%02lu-%d-%02d: ", args->tid, req->clientId, req->numWantedSeats);
 
     for (int i = 0; i < req->numPrefSeats; i++)
         sprintf(line + strlen(line), "%04d ", req->wantedSeats[i]);
+    
+    sprintf(line, "%-50s", line);
 
     sprintf(line + strlen(line), "- ");
 
