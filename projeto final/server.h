@@ -9,7 +9,7 @@ pthread_mutex_t writeMutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *slogFile;
 FILE *sbookFile;
 
-// Server function prototypes
+// Server-side functions
 Server *createServer(int argc, char **argv);
 void printSvInfo(Server *sv);
 Room *roomInit(int num_room_seats);
@@ -17,7 +17,7 @@ int isSeatFree(Seat **seats, int seat_num);
 void bookSeat(Seat **seats, int seat_num, int client_id);
 void freeSeat(Seat **seats, int seat_num);
 void createThreads(Server *sv);
-void serverAlarmHandler(int signum);
+void alarmHandler(int signo);
 void *readRequest(void *arg);
 int verifyRequest(ThreadArgs *args);
 void handleReservation(ThreadArgs *args);

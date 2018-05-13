@@ -16,7 +16,7 @@ int main(int argc, char **argv)
     createThreads(sv);
 
     // implementing alarm for open_time
-    installAlarm(serverAlarmHandler, sv->openTime);
+    installAlarm(alarmHandler, sv->openTime);
 
     // signal threads to be cancelled
     terminateThreads(sv);
@@ -220,15 +220,22 @@ int verifyRequest(ThreadArgs *args)
     if (isRoomFull(sv->room))
         return FUL;
 
-    if (req->numWantedSeats < 1 || req->numWantedSeats > MAX_CLI_SEATS)
+    if (req->numWantedSeats < 1 ||
+        req->numWantedSeats > MAX_CLI_SEATS)
         return MAX;
 
-    if (req->numPrefSeats < req->numWantedSeats || req->numPrefSeats > MAX_CLI_SEATS)
+    if (req->numPrefSeats < req->numWantedSeats ||
+        req->numPrefSeats > MAX_CLI_SEATS)
         return NST;
 
-    int numAvailableSeats = 0;
     for (size_t i = 0; i < req->numPrefSeats; i++)
-        if (isSeatFree(sv->room->seats, req->wantedSeats[i]))
+        if (req->wantedSeats[i] < 1 ||
+            req->wantedSeats[i] > sv->room->numRoomSeats)
+            return IID;
+
+    int numAvailableSeats = 0;
+    for (size_t j = 0; j < req->numPrefSeats; j++)
+        if (isSeatFree(sv->room->seats, req->wantedSeats[j]))
             numAvailableSeats++;
 
     if (numAvailableSeats < req->numWantedSeats)
@@ -245,17 +252,18 @@ void handleReservation(ThreadArgs *args)
 
     ans->numReservedSeats = 0;
 
-    int index = 0;
+    int idx = 0;
     while (ans->numReservedSeats < req->numWantedSeats)
     {
-        if (isSeatFree(seats, req->wantedSeats[index]))
+        int currentSeat = req->wantedSeats[idx];
+        if (isSeatFree(seats, currentSeat))
         {
-            bookSeat(seats, req->wantedSeats[index], req->clientId);
-            ans->reservedSeats[ans->numReservedSeats] = req->wantedSeats[index];
+            bookSeat(seats, currentSeat, req->clientId);
+            ans->reservedSeats[ans->numReservedSeats] = currentSeat;
             ans->numReservedSeats++;
         }
 
-        index++;
+        idx++;
     }
 }
 
@@ -287,10 +295,13 @@ void writeSlog(ThreadArgs *args)
     sprintf(line + strlen(line), "- ");
 
     if (!ans->errorCode)
+    {
         for (int j = 0; j < ans->numReservedSeats; j++)
             sprintf(line + strlen(line), "%04d ", ans->reservedSeats[j]);
-    else
+    }
+    else {
         sprintf(line + strlen(line), "%s", getError(ans->errorCode));
+    }
 
     sprintf(line + strlen(line), "\n");
 
@@ -333,9 +344,10 @@ void freeResources(Server *sv)
     closeFifo(FIFO_REQ, sv->fdFifoReq);
     closeFile(SBOOK_FILE, sbookFile);
     closeFile(SLOG_FILE, slogFile);
+    free(sv);
 }
 
-void serverAlarmHandler(int signum)
+void alarmHandler(int signum)
 {
     printf("Server closing ...\n");
 }

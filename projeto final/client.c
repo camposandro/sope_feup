@@ -46,13 +46,12 @@ Client *createClient(int argc, char **argv)
     strcpy(seatsString, argv[3]);
 
     // reserving space & storing for favorite seats
-    req->numPrefSeats = strlen(argv[3]) / 2 + 1;
-    for (int i = 0, j = 0; j < req->numPrefSeats; i += 2, j++)
-        req->wantedSeats[j] = (int)(seatsString[i] - '0');
+    req->numPrefSeats = parseString(argv[3], req->wantedSeats);
 
     Client *client = (Client *)malloc(sizeof(Client));
     client->timeout = atoi(argv[1]);
     client->req = req;
+    client->fifoAns = NULL;
 
     return client;
 }
@@ -88,7 +87,8 @@ void sendRequest(Client *client)
         printf("Error while writing request to FIFO ...\n");
         exit(1);
     }
-    else {
+    else
+    {
         printf("Request sent!\n");
     }
 }
@@ -130,4 +130,5 @@ void freeResources(Client *client)
     closeFifo(client->fifoAns, client->fdFifoAns);
     closeFile(CLOG_FILE, clogFile);
     closeFile(CBOOK_FILE, cbookFile);
+    free(client);
 }

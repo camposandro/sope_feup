@@ -93,5 +93,6 @@ void closeFifo(char *fifoname, int fd);
 FILE *openFile(char *filename);
 void writeFile(char *txt, FILE *file);
 void closeFile(char *filename, FILE *file);
-void installAlarm(void (*handler)(int), int time);
 const char *getError(int error);
+int parseString(char *str, int *intArr);
+void installAlarm(void (*handler)(int), int time);

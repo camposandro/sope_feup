@@ -61,28 +61,9 @@ void closeFile(char *filename, FILE *file)
         perror(filename);
 }
 
-void installAlarm(void (*handler)(int), int time)
-{
-    struct sigaction action;
-    sigset_t sigmask;
-
-    action.sa_handler = handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    sigaction(SIGALRM, &action, NULL);
-
-    sigfillset(&sigmask);
-    sigdelset(&sigmask, SIGALRM);
-    sigdelset(&sigmask, SIGINT);
-
-    alarm(time);
-
-    sigsuspend(&sigmask);
-}
-
 const char *getError(int error)
 {
-    char *err = (char *) malloc(3 * sizeof(char));
+    char *err = (char *)malloc(3 * sizeof(char));
     switch (error)
     {
     case -1:
@@ -108,4 +89,63 @@ const char *getError(int error)
     }
 
     return err;
+}
+
+int parseString(char *str, int *intArr)
+{
+    int c = 0, idx = 0;
+
+    int *intArr_aux = (int *)malloc(MAX_CLI_SEATS * sizeof(int));
+
+    int endStr = 0;
+    while (!endStr)
+    {
+        if (str[c] == ' ')
+            c++;
+
+        int n = 0;
+        while (str[c] != ' ')
+        {
+            if (str[c] == '\0')
+            {
+                endStr = 1;
+                break;
+            }
+
+            n = n * 10 + str[c] - '0';
+            c++;
+        }
+
+        intArr[idx] = n;
+
+        if (!endStr)
+            idx++;
+    }
+
+    intArr = (int *)malloc((idx + 1) * sizeof(int));
+    for (int k = 0; k <= idx; k++)
+        intArr[k] = intArr_aux[k];
+
+    free(intArr_aux);
+
+    return idx + 1;
+}
+
+void installAlarm(void (*handler)(int), int time)
+{
+    struct sigaction action;
+    sigset_t sigmask;
+
+    action.sa_handler = handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    sigaction(SIGALRM, &action, NULL);
+
+    sigfillset(&sigmask);
+    sigdelset(&sigmask, SIGALRM);
+    sigdelset(&sigmask, SIGINT);
+
+    alarm(time);
+
+    sigsuspend(&sigmask);
 }
