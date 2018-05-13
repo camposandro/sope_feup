@@ -36,9 +36,9 @@ void closeFifo(char *fifoname, int fd)
     }
 }
 
-FILE *openFile(char *filename)
+FILE *openFile(char *filename, char *mode)
 {
-    FILE *file = fopen(filename, "w");
+    FILE *file = fopen(filename, mode);
 
     if (file != NULL)
         return file;
@@ -59,6 +59,12 @@ void closeFile(char *filename, FILE *file)
 {
     if (fclose(file) != 0)
         perror(filename);
+}
+
+void resetClientFiles()
+{
+    remove(CBOOK_FILE);
+    remove(CLOG_FILE);
 }
 
 const char *getError(int error)
@@ -83,6 +89,9 @@ const char *getError(int error)
         break;
     case -6:
         strcpy(err, "FUL");
+        break;
+    case -7:
+        strcpy(err, "TMO");
         break;
     default:
         return NULL;

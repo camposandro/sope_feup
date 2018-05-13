@@ -92,9 +92,10 @@ typedef struct ThreadArgs
 void createFifo(char *fifoname, mode_t perm);
 int openFifo(char *fifoname, mode_t mode);
 void closeFifo(char *fifoname, int fd);
-FILE *openFile(char *filename);
+FILE *openFile(char *filename, char* mode);
 void writeFile(char *txt, FILE *file);
 void closeFile(char *filename, FILE *file);
+void resetClientFiles();
 const char *getError(int error);
 int parseString(char *str, int *intArr);
 void installAlarm(void (*handler)(int), int time);

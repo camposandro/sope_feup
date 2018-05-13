@@ -6,7 +6,7 @@ int main(int argc, char **argv)
     Client *client = createClient(argc, argv);
 
     // creating & opening clog.txt
-    clogFile = openFile(CLOG_FILE);
+    clogFile = openFile(CLOG_FILE, "a");
 
     // creating & opening answer fifo
     client->fdFifoAns = createAnsFifo(client);
@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     waitAnswer(client);
 
     // creating & opening cbook.txt
-    cbookFile = openFile(CBOOK_FILE);
+    cbookFile = openFile(CBOOK_FILE, "a");
 
     // writing to cbook.txt
     writeCbook(client);
@@ -141,31 +141,29 @@ void writeClog(Client *client)
 
     if (ans->errorCode != 0)
     {
-        char *err = malloc(3 * sizeof(char));
+        char *err = malloc(3 * sizeof(char)); 
         strcpy(err, getError(ans->errorCode));
-        printf("err: %s\n", err);
-        sprintf(line + strlen(line), "%s", err);
+        sprintf(line + strlen(line), "%s\n", err);
+
+        writeFile(line, clogFile);
     }
     else
     {
         for (int i = 1; i <= ans->numReservedSeats; i++)
         {
-            if (ans->errorCode == 0)
-            {
-                sprintf(line + strlen(line), "%02d", i);
-                sprintf(line + strlen(line), ".");
-                sprintf(line + strlen(line), "%02d ", ans->numReservedSeats);
-                sprintf(line + strlen(line), "%04d\n", ans->reservedSeats[i - 1]);
-            }
+            sprintf(line, "%05d ", client->req->clientId);
+            sprintf(line + strlen(line), "%02d", i);
+            sprintf(line + strlen(line), ".");
+            sprintf(line + strlen(line), "%02d ", ans->numReservedSeats);
+            sprintf(line + strlen(line), "%04d\n", ans->reservedSeats[i - 1]);
+
+            writeFile(line, clogFile);
         }
     }
-
-    writeFile(line, clogFile);
 }
 
 void writeCbook(Client *client)
 {
-
     Answer *ans = client->ans;
 
     for (int i = 1; i <= ans->numReservedSeats; i++)

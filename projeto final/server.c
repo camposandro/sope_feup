@@ -5,8 +5,11 @@ int main(int argc, char **argv)
     // creating server
     Server *sv = createServer(argc, argv);
 
+    // clear clients existent files
+    resetClientFiles();
+
     // creating & opening slog.txt
-    slogFile = openFile(SLOG_FILE);
+    slogFile = openFile(SLOG_FILE, "w");
 
     // creating & opening fifo "requests"
     createFifo(FIFO_REQ, S_IRUSR | S_IWUSR);
@@ -22,7 +25,7 @@ int main(int argc, char **argv)
     terminateThreads(sv);
 
     // creating & opening sbook.txt
-    sbookFile = openFile(SBOOK_FILE);
+    sbookFile = openFile(SBOOK_FILE, "w");
 
     // registering reserved seats on sbook.txt
     writeSbook(sv);
@@ -147,7 +150,7 @@ void createThreads(Server *sv)
     int numThreads = sv->numTicketOffices;
     sv->tids = (pthread_t *)malloc(numThreads * sizeof(pthread_t));
 
-    for (size_t i = 1; i <= numThreads; i++)
+    for (int i = 1; i <= numThreads; i++)
     {
         ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
         args->sv = sv;
@@ -156,12 +159,12 @@ void createThreads(Server *sv)
         int rc = pthread_create(&sv->tids[i - 1], NULL, readRequest, (void *)args);
         if (rc)
         {
-            printf("Could not create thread - error code %d\n", rc);
+            printf("Could not create thread %d - error code %d\n", i, rc);
             exit(1);
         }
 
         char openMsg[10];
-        sprintf(openMsg, "%02lu-OPEN\n", i);
+        sprintf(openMsg, "%02d-OPEN\n", i);
         writeFile(openMsg, slogFile);
     }
 }
@@ -186,7 +189,7 @@ void *readRequest(void *parameter)
 
         if (fifoRead > 0)
         {
-            printf("Request read!\n");
+            printf("Request received!\n");
             int validity = verifyRequest(args);
 
             if (validity == 1)
