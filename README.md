@@ -1,6 +1,6 @@
 # SOPE_FEUP
 
-Repository hosting project deliveries developed on the curricular unit of *Operative Systems*, at FEUP.
+Repository hosting project deliveries developed on the curricular unit of *Operating Systems*, at FEUP.
 
 ### Authors
 - Luís Borges (up201605859@fe.up.pt)
